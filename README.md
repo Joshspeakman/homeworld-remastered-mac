@@ -1,5 +1,7 @@
 # Homeworld Remastered Collection — native Apple Silicon port
 
+![Homeworld Remastered, native on Apple Silicon](media/hero.jpg)
+
 **Early, and playable into the campaign.** This is the Steam *Mac* edition of Homeworld Remastered (Aspyr, 2.0.1)
 running natively on Apple Silicon. That edition is a 32-bit Intel app; macOS dropped 32-bit apps in 10.15, and
 Rosetta 2 does not run them, so the Steam copy no longer starts on a current Mac.
@@ -8,6 +10,13 @@ The port statically recompiles the game's own i386 Mach-O executable (`HW2HD_Exe
 runs it on a native runtime: the game's OpenGL rendering goes to **Metal**, its SDL2 platform layer to native code,
 audio to CoreAudio. No Wine, no Rosetta, no emulator at run time. Nothing from the game is in this repository: the
 build regenerates everything from your own Steam files.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The launch window](media/screenshots/screenshot-launcher.png) | ![Mothership launch](media/screenshots/screenshot-01-mothership-launch.jpg) |
+| ![Mothership hull](media/screenshots/screenshot-02-mothership-hull.jpg) | ![Mission 1](media/screenshots/screenshot-03-mission-1.jpg) |
 
 ## Install
 
