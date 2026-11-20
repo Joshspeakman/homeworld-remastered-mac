@@ -52,7 +52,8 @@ typedef struct Attr { BOOL on; GLint size; GLenum type; BOOL norm; GLsizei strid
 typedef struct Uni { char name[64]; int loc, count, basetype, columns, vecsize; int off[2], stride[2]; int sampler; } Uni;   /* off: -1 = not in that stage */
 typedef struct Smp { int loc, unit, slot[2], dim, depth; } Smp;                                                                   /* slot: texture(n) per stage, -1 */
 @interface MProgram : NSObject {
-@public MShader *vs, *fs; BOOL linked; char log[4096];
+@public uint64_t serial;   /* never reused, unlike the object's address: the pipeline cache keys on it */
+    MShader *vs, *fs; BOOL linked; char log[4096];
     Uni *uni; int nuni, nloc; Smp smp[MGL_MAX_SAMPLERS * 2]; int nsmp;
     uint8_t *block[2]; unsigned blockSize[2]; int blockSlot[2];
     MglInput inputs[MGL_MAX_INPUTS]; int ninputs;
@@ -475,7 +476,8 @@ static void mgl_glGetShaderiv(GLuint sh, GLenum p, GLint *v)
 static void mgl_glGetShaderInfoLog(GLuint sh, GLsizei max, GLsizei *len, GLchar *out)
 { MShader *s = get(shaders, sh); const char *l = s ? s->log : ""; if (max > 0) { snprintf(out, (size_t)max, "%s", l); } if (len) *len = (GLsizei)strlen(l); }
 static void mgl_glDeleteShader(GLuint sh) { (void)sh; }   /* kept while programs refer to them (the game deletes after linking) */
-static GLuint mgl_glCreateProgram(void) { return gl_names_put([MProgram new]); }
+static uint64_t next_program_serial;
+static GLuint mgl_glCreateProgram(void) { MProgram *p = [MProgram new]; p->serial = ++next_program_serial; return gl_names_put(p); }
 static void mgl_glDeleteProgram(GLuint p) { if (S.prog == p) S.prog = 0; drop(shaders, p); }
 static void mgl_glAttachShader(GLuint p, GLuint sh)
 {
@@ -486,6 +488,7 @@ static int uniform_size(const MglUniform *u) { int b = u->basetype == 13 || u->b
 static void mgl_glLinkProgram(GLuint p)
 {
     MProgram *pr = get(shaders, p); if (![pr isKindOfClass:[MProgram class]]) return;
+    pr->serial = ++next_program_serial;   /* relinking with other shaders must not hit the old link's pipelines */
     pr->linked = pr->vs && pr->fs && pr->vs->ok && pr->fs->ok;
     if (!pr->linked) { snprintf(pr->log, sizeof pr->log, "a stage did not compile"); return; }
     /* the fragment stage again, its inputs at the vertex outputs' locations (by name) */
@@ -736,7 +739,7 @@ static id<MTLRenderPipelineState> pipeline(MProgram *pr, MVao *va)
 {
     /* key: program, attachment formats, blend, write mask, vertex layout */
     uint32_t key[64]; int n = 0;
-    key[n++] = (uint32_t)(uintptr_t)(__bridge void *)pr; key[n++] = (uint32_t)((uintptr_t)(__bridge void *)pr >> 32);
+    key[n++] = (uint32_t)pr->serial; key[n++] = (uint32_t)(pr->serial >> 32);   /* the serial, not the address: a program made after glDeleteProgram can get the same address */
     key[n++] = S.passKey[0]; key[n++] = S.passKey[1]; key[n++] = S.passKey[2];
     key[n++] = S.blend ? (S.bsrc | S.bdst << 16) : 0; key[n++] = S.blend ? (S.bsrcA | S.bdstA << 16) : 0; key[n++] = S.blend ? (S.beq | S.beqA << 16) : 0;
     key[n++] = (uint32_t)(S.cmask[0] | S.cmask[1] << 1 | S.cmask[2] << 2 | S.cmask[3] << 3);
@@ -1050,7 +1053,8 @@ static void init_device(void)
     buffers = [NSMutableArray new]; textures = [NSMutableArray new]; vaos = [NSMutableArray new]; fbos = [NSMutableArray new]; shaders = [NSMutableArray new];
     fn_cache = [NSMutableDictionary new]; S.pipelines = [NSMutableDictionary new]; S.dsStates = [NSMutableDictionary new]; S.samplers = [NSMutableDictionary new];
     S.defaultVao = [MVao new];
-    float generic[4] = {0, 0, 0, 1}; S.zeroAttr = [S.dev newBufferWithBytes:generic length:64 options:MTLResourceStorageModeShared];
+    static const float generic[16] = {0, 0, 0, 1};   /* 64 bytes: (0,0,0,1) then zeros; the copy below is sizeof generic, not longer */
+    S.zeroAttr = [S.dev newBufferWithBytes:generic length:sizeof generic options:MTLResourceStorageModeShared];
     S.bsrc = S.bsrcA = GL_ONE; S.bdst = S.bdstA = GL_ZERO; S.beq = S.beqA = GL_FUNC_ADD; S.depthFunc = GL_LESS; S.depthMask = YES;
     S.cmask[0] = S.cmask[1] = S.cmask[2] = S.cmask[3] = YES; S.cullFace = GL_BACK; S.frontFace = GL_CCW; S.polyMode = GL_FILL;
     S.clearD = 1; S.unpackAlign = S.packAlign = 4;

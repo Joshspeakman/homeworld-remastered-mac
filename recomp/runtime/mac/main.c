@@ -33,6 +33,16 @@ static void on_signal(int sig)                          /* how a run ended, when
 }
 int main(int argc, char **argv)
 {
+#ifdef DS_EASY_INSTALL
+    if (argc < 2) {   /* the downloaded app: setup builds the game from the player's copy (setup/setup_ui.m), then it plays */
+        int ds_easy_install(const char **, const char **, const char **);   /* returns only when the game is ready */
+        const char *exe = 0, *game = 0, *data = 0;
+        if (ds_easy_install(&exe, &game, &data) > 0) {
+            char ud[1100]; snprintf(ud, sizeof ud, "%s/userdata", data); if (!getenv("HW_DATA")) setenv("HW_DATA", ud, 1);
+            static char *av[3]; av[0] = argv[0]; av[1] = strdup(game); argc = 2; argv = av;   /* game-files: the copied HomeworldRemastered.app */
+        }
+    }
+#endif
     if (argc < 2) { fprintf(stderr, "usage: %s <HomeworldRemastered.app> [arguments]\n", argv[0]); return 2; }
     log_to_file();
     static const int sigs[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGHUP, SIGTRAP};

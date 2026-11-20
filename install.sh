@@ -7,7 +7,7 @@
 #
 # The game's files are imported into the data folder (default ~/Games/HomeworldNative/game-files: an APFS clone, so
 # it takes no extra space) and the app reads them from there; with --in-place it reads the Steam folder instead.
-# Profiles, saves, settings and the game's log go to ~/Games/HomeworldNative/userdata. Needs the Xcode command line
+# Profiles, saves, settings and the logs (HwRM.log, hw2hd.log) go to ~/Games/HomeworldNative/userdata. Needs the Xcode command line
 # tools, python3 and Homebrew's sdl2-compat, glslang and spirv-cross (brew install sdl2-compat glslang spirv-cross).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

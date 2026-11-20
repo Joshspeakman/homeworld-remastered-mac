@@ -10,6 +10,9 @@
  * Development: HW_LAUNCHER_SHOT=<png> renders the window to an image (HW_LAUNCHER_HOVER=<code> lights an item). */
 #import <Cocoa/Cocoa.h>
 #include <unistd.h>
+static NSString *hw_release;            /* the downloaded app: its release's tag (its updater follows releases) */
+static BOOL hw_setup_pending;           /* the downloaded app before its game is set up: Play is Set Up */
+static NSArray<NSString *> *hw_pending_open;
 
 static NSColor *accent(void) { return [NSColor colorWithSRGBRed:0.40 green:0.80 blue:1.00 alpha:1]; }
 static NSColor *accent_dim(void) { return [NSColor colorWithSRGBRed:0.20 green:0.42 blue:0.58 alpha:1]; }
@@ -308,7 +311,7 @@ static void draw_fit(NSImage *img, NSRect r, CGFloat fraction)           /* aspe
     NSString *hint = [self currentHint];
     if (hint.length) draw_text(hint, body(12.5, NO), dim(), NSMakeRect(60, H - 56, 400, 36), NSTextAlignmentLeft, sh, 0.2);
     [self drawButton:self.quitRect title:self.open ? @"BACK" : @"QUIT" code:self.open ? HIT_BACK : HIT_QUIT primary:NO];
-    [self drawButton:self.playRect title:@"PLAY" code:HIT_PLAY primary:YES];
+    [self drawButton:self.playRect title:hw_setup_pending ? @"SET UP" : @"PLAY" code:HIT_PLAY primary:YES];
 }
 @end
 
@@ -323,7 +326,9 @@ static NSString *update_check(NSString *updater)     /* the newest commit of the
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_global_queue(0, 0), ^{ if (t.running) [t terminate]; });
     NSData *d = [p.fileHandleForReading readDataToEndOfFile]; [t waitUntilExit];
     NSString *out = [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    return t.terminationStatus == 0 && out.length >= 40 ? [out substringToIndex:40] : nil;
+    if (t.terminationStatus != 0 || !out.length) return nil;
+    if (out.length >= 40) return [out substringToIndex:40];   /* a commit (an app built from source) */
+    return [out rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location == NSNotFound ? out : nil;   /* a release's tag (the downloaded app) */
 }
 static NSArray<NSDictionary *> *update_choice(int state, NSString *branch, NSString *built, NSString *latest)
 {
@@ -338,6 +343,12 @@ static NSArray<NSDictionary *> *update_choice(int state, NSString *branch, NSStr
 }
 static NSString *update_phase(NSString *line, NSString *branch)
 {
+    if ([branch isEqualToString:@"release"]) {   /* the downloaded app's updater (setup/update.sh) */
+        if ([line hasPrefix:@"== downloading "]) return [NSString stringWithFormat:@"Downloading %@ from GitHub", [line substringFromIndex:15]];
+        if ([line hasPrefix:@"== unpacking"]) return @"Unpacking it";
+        if ([line hasPrefix:@"== installing"]) return @"Installing the new app";
+        return nil;
+    }
     if ([line hasPrefix:@"== fetching"]) return @"Downloading the update from GitHub";
     if ([line hasPrefix:[NSString stringWithFormat:@"== %@:", branch]]) return [@"Got " stringByAppendingString:[line substringFromIndex:branch.length + 4]];
     if ([line hasPrefix:@"== recompiling"]) return @"Rebuilding from your game: translating it to native code (1 of 2)";
@@ -415,6 +426,8 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
 @property (strong) NSWindow *window; @property (strong) HWLaunchView *view;
 @property (strong) HWTile *display, *notch, *resolution, *vsync, *renderer, *movies, *saves, *updates;
 @property NSString *gamePath, *dataPath;
+@property NSString *libDir;                                     /* the downloaded app: the game's library, set up in ~/Games */
+@property BOOL dropin, ready;                                   /* the downloaded app (setup/hw2hd.json); its game set up */
 @end
 
 @implementation Launcher
@@ -425,6 +438,18 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     self.gamePath = info[@"HWGamePath"] ?: @"";
     self.dataPath = info[@"HWDataPath"] ?: [NSHomeDirectory() stringByAppendingPathComponent:@"Games/HomeworldNative"];
+    self.ready = YES;
+    NSData *sj = [NSData dataWithContentsOfFile:[NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"setup/hw2hd.json"]];
+    NSDictionary *sc = sj ? [NSJSONSerialization JSONObjectWithData:sj options:0 error:nil] : nil;
+    if (sc) {   /* the downloaded app (make_suite.sh): hw2hd sets the game up in ~/Games/<folder> (setup/setup_ui.m) */
+        NSString *root = [NSHomeDirectory() stringByAppendingPathComponent:[@"Games" stringByAppendingPathComponent:sc[@"folder"]]];
+        self.dropin = YES; self.dataPath = root; self.gamePath = [root stringByAppendingPathComponent:@"game-files"];   /* the copied HomeworldRemastered.app */
+        self.libDir = [root stringByAppendingPathComponent:@"recomp"];
+        NSData *rj = [NSData dataWithContentsOfFile:[self.libDir stringByAppendingPathComponent:@"ready.json"]];
+        NSDictionary *ready = rj ? [NSJSONSerialization JSONObjectWithData:rj options:0 error:nil] : nil;
+        self.ready = [ready[@"code"] isEqual:sc[@"code"]] && [[NSFileManager defaultManager] fileExistsAtPath:[self.libDir stringByAppendingPathComponent:@"libgame.dylib"]];
+        hw_release = sc[@"release"] ?: @""; hw_setup_pending = !self.ready;
+    }
     NSString *res = [self.gamePath stringByAppendingPathComponent:@"Contents/Resources"];
     NSArray *artDirs = @[[self.dataPath stringByAppendingPathComponent:@"art"], [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"art"] ?: @"", res];
 
@@ -508,6 +533,7 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
     self.window = w; [w center]; [w makeKeyAndOrderFront:nil]; [w makeFirstResponder:v];
     [NSApp activateIgnoringOtherApps:YES];
     if (getenv("HW_LAUNCHER_PLAY")) dispatch_async(dispatch_get_main_queue(), ^{ [ws play]; });   /* development: Play at once */
+    if (hw_pending_open) { NSArray *p = hw_pending_open; hw_pending_open = nil; dispatch_async(dispatch_get_main_queue(), ^{ [ws application:NSApp openFiles:p]; }); }
 }
 - (void)setupUpdates
 {
@@ -515,6 +541,7 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
     NSString *updater = [NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"update"];
     if (![[NSFileManager defaultManager] isExecutableFileAtPath:updater]) updater = nil;
     NSString *branch = info[@"HWBranch"] ?: @"main", *built = info[@"HWBuilt"] ?: @"";
+    if (hw_release) { branch = @"release"; built = hw_release; }   /* the downloaded app (setup/update.sh) */
     HWTile *u = [HWTile new]; u.title = @"Updates"; self.updates = u;
     __block int state = updater ? UPD_CHECKING : UPD_NONE; __block NSString *latest = nil;
     u.choices = update_choice(state, branch, built, nil);
@@ -535,7 +562,8 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
         if (state != UPD_AVAILABLE) { check(); return; }
         NSAlert *a = [NSAlert new];
         a.messageText = [NSString stringWithFormat:@"Update to the newest %@?", [branch isEqualToString:@"nightly"] ? @"Nightly" : @"version"];
-        a.informativeText = [NSString stringWithFormat:@"The %@ branch (%@) is downloaded from GitHub and the app is rebuilt from your own copy of the game, "
+        a.informativeText = [branch isEqualToString:@"release"] ? [NSString stringWithFormat:@"%@ is downloaded from GitHub and replaces this app. Your game, saves and settings are kept; if the game's code changed, it is rebuilt from your copy when the app starts again.", latest]
+                          : [NSString stringWithFormat:@"The %@ branch (%@) is downloaded from GitHub and the app is rebuilt from your own copy of the game, "
                              "which takes a few minutes. Your profiles, saves and settings are kept. The app restarts when it is done.", branch, short_commit(latest)];
         [a addButtonWithTitle:@"Update"]; [a addButtonWithTitle:@"Cancel"];
         if ([a runModal] != NSAlertFirstButtonReturn) return;
@@ -549,6 +577,25 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
     };
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)a { return YES; }
+/* the downloaded app: hw2hd shows its setup window (Drop, Choose, Search; setup/setup_ui.m), given a folder when one was
+ * dropped on the app, and comes back here when the game is ready (DS_SUITE) */
+- (void)setUp:(NSString *)folder
+{
+    [self save];
+    setenv("DS_SUITE", NSBundle.mainBundle.executablePath.fileSystemRepresentation, 1);
+    if (folder) setenv("DS_SETUP_FOLDER", folder.fileSystemRepresentation, 1); else unsetenv("DS_SETUP_FOLDER");
+    NSString *exe = [NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"hw2hd"];
+    char *const av[] = {(char *)exe.fileSystemRepresentation, NULL};
+    execv(av[0], av);
+    NSAlert *a = [NSAlert new]; a.messageText = @"Setup did not start"; [a runModal];
+}
+- (void)application:(NSApplication *)app openFiles:(NSArray<NSString *> *)paths
+{
+    if (!self.dropin) { [app replyToOpenOrPrint:NSApplicationDelegateReplyFailure]; return; }
+    if (!self.view) { hw_pending_open = paths; return; }                 /* the app opened by the drop: once its window is up */
+    if (self.ready) { [app replyToOpenOrPrint:NSApplicationDelegateReplySuccess]; return; }   /* set up already */
+    [self setUp:paths.firstObject];                                     /* setup checks what it is */
+}
 - (void)save
 {
     NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
@@ -565,19 +612,22 @@ static NSImage *image_at(NSArray<NSString *> *dirs, NSString *name)
 {
     [self save];
     NSInteger g = self.view.game;
+    if (self.dropin && !self.ready) { [self setUp:nil]; return; }
     if (![[NSFileManager defaultManager] fileExistsAtPath:self.gamePath]) {
         NSAlert *a = [NSAlert new]; a.messageText = @"The game files are missing";
-        a.informativeText = [NSString stringWithFormat:@"Expected %@. Run install.sh again.", self.gamePath];
+        a.informativeText = self.dropin ? [NSString stringWithFormat:@"Expected %@.", self.gamePath] : [NSString stringWithFormat:@"Expected %@. Run install.sh again.", self.gamePath];
         [a runModal]; return;
     }
     NSString *exe = [NSBundle.mainBundle.executablePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"hw2hd"];
     NSArray *args = g == 0 ? @[@"-dlccampaign", @"HW1Campaign.big", @"-campaign", @"HomeworldClassic", @"-moviepath", @"DataHW1Campaign"]
                            : @[@"-dlccampaign", @"HW2Campaign.big", @"-campaign", @"Ascension", @"-moviepath", @"DataHW2Campaign"];
+    setenv("HW_DATA", [self.dataPath stringByAppendingPathComponent:@"userdata"].fileSystemRepresentation, 1);   /* the runtime defaults to ~/Games/HomeworldNative/userdata; with --data-dir that is the wrong folder */
     setenv("HW_FULLSCREEN", [self.display.choices[self.display.index][@"value"] boolValue] ? "1" : "0", 1);
     setenv("HW_VSYNC", [self.vsync.choices[self.vsync.index][@"value"] boolValue] ? "1" : "0", 1);
     setenv("HW_RETINA", [self.resolution.choices[self.resolution.index][@"value"] boolValue] ? "1" : "0", 1);
     setenv("HW_NOTCH", [self.notch.choices[self.notch.index][@"value"] UTF8String], 1);
     setenv("HW_GL", [self.renderer.choices[self.renderer.index][@"value"] boolValue] ? "apple" : "metal", 1);
+    if (self.libDir) setenv("DYLD_LIBRARY_PATH", self.libDir.fileSystemRepresentation, 1);   /* the downloaded app: bind the game's library */
     [self.window orderOut:nil];
     const char **argv = calloc(args.count + 4, sizeof *argv);
     argv[0] = exe.fileSystemRepresentation; argv[1] = self.gamePath.fileSystemRepresentation;

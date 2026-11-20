@@ -1,83 +1,41 @@
-# Recompiler: Delta Force and Delta Force 2 as native code
+# Recompiler: Homeworld Remastered as native code
 
-Static recompilation of the user's own Steam `Df.exe` / `Df2.exe` (and the NovaLogic DLLs in the game folder) into C,
-compiled for Apple Silicon or Linux x86-64. Nothing derived from the games is committed: `build_df.sh` regenerates
-everything locally from the user's files. Installing and playing: [README](../README.md); what was specific to these
-games and the Mac handoff: [docs/DF-PORT.md](../docs/DF-PORT.md).
+Static recompilation of your own Steam Mac edition (Aspyr 2.0.1): the 32-bit Intel Mach-O `HW2HD_Exe` becomes C, compiled
+for arm64. Nothing derived from the game is committed; `build_hw.sh` regenerates everything locally. Installing and playing:
+[README](../README.md). Status and plan: [docs/PLAN.md](../docs/PLAN.md).
 
 ```sh
-recomp/build_df.sh "/path/to/Delta Force 2"      # -> recomp/work/df2 (a minute or two)
+recomp/build_hw.sh "/path/to/HomeworldRemastered.app"      # -> recomp/work/hw2hd
 ```
 
-The sections below describe the recompiler as inherited from the Dungeon Siege II port (its execution model, flags,
-x87, indirect calls and test harnesses apply unchanged); the numbers in them are Dungeon Siege II's.
+## The pipeline
 
-## Status
+`build_hw.sh` runs analysis (`tools/analyze.py`), lifting to C (`tools/lift.py`), compilation (`cc1.sh`), then
+`tools/build_hw_runtime.sh`, which links the runtime.
 
-| Step | State |
+| Where | What |
 |---|---|
-| Analysis (`tools/analyze.py`) | 85,833 functions, 97.1% of `.text`; 479 jump tables resolved, 73 bounded heuristically |
-| Lifter (`tools/lift.py`), runtime core (`runtime/`) | the whole executable and its DLLs compile and link (89,293 functions) |
-| Win32 layer (`runtime/win32`): loader, memory, heaps, threads, SEH, files, registry, USER32 (with timers), GDI, DbgHelp, WSOCK32 (`winsock.c`) | working |
-| Direct3D 9 (`d3d9.c`, `d3d9_fmt.c`) on the Metal renderer (`../src/renderer`), D3DX textures (`d3dx9.c`) | working: fixed function, and the game's HLSL effects compiled to Metal (`hlsl.c`, `d3dx9_fx.c`) |
-| Miles 6.6g (`mss32.dll` and its providers) and Bink, recompiled from the game folder; DirectSound over Core Audio | working |
-| App bundle, installer (`../install.sh`), launch window (`host/launcher.m`; Rainbow Six: `host/r6_launcher.m`, from the co-op mod's r6coop-launcher.json) | working |
-| Multiplayer (DirectPlay 8, GameSpy lobby on OpenSpy) | switched back on: the lobby works with an original CD key; hosting and joining untested (`../docs/MULTIPLAYER.md`) |
+| `runtime/rt.c` | the execution core shared with the lifted code |
+| `runtime/mac/` | the native runtime: Mach-O loader, libSystem, CoreFoundation, SDL, Steam stubs, Miles audio |
+| `runtime/mac/mgl/` | the game's OpenGL 4.1 calls and GLSL shaders on Metal |
+| `host/hw_launcher.m` | the launcher window (game, display, Graphics Options, saves, updates) |
 
-The recompiled game runs without Wine or Rosetta: intro, menus, new hero, the campaign, saving and loading.
+## Switches
 
-Test mode: `DS_TEST=1` (background window, no mouse capture, no launch window), `W32_AUDIO_MUTE=1`,
-`DS_SCRIPT="@20:click:402,264;@30:shot:/tmp/a.png"` (scripted input in the game's display-mode coordinates; also
-`move`, `rclick`, `press`, `key`, `type`), `DS_RESOLUTION=WxH`. Logs: `D3D9_LOG=1|2` (Direct3D calls), `D3D9_FPS=1`,
-`W32_TRACE=<file>` (every Windows call), `W32_SEHLOG=1` (exceptions and the SEH chain), `W32_VMLOG=1`,
-`W32_REGLOG=1` (registry keys not found), `W32_AUDIOLOG=1`. Crash and hang reports go to `<data>/CrashReports`.
+Set in the environment of the `hw2hd` binary.
 
-Shader effects (`runtime/win32/hlsl.c`, `d3dx9_fx.c`; the game's Options → Video → Shaders, saved as `shaders = ...` in
-`Save/prefs.gas`): `DS2_SHADERS=0` turns them off (the Radeon 8500 identity, fixed function only). Development:
-`FX_PARAMLOG=1` (each parameter's first and first non-zero value), `FX_FOGLOG=1` (fog parameter changes),
-`FX_DUMP=n` (every parameter at the first n passes of each effect), `D3D9_TEXLOG=n` (texture binding during effect
-passes), `HLSL_MAGENTA=1` (effect pixels drawn magenta), `DSR_FXPATCH="old=>new||old=>new"` (text replaced in every
-effect program's Metal before compiling), `DSR_FXTEXLOG=n` (fog, alpha and textures at effect draws), `DSR_RTLOG=n`
-(render target changes and clears), `DSR_SHOWSURF=<surface id>` (that surface drawn in the screen's corner),
-`DSR_GLOWLOG=1` (draws into and out of effect render targets, which are shown in the screen's corner),
-`D3D9_FXSTATELOG=1` (states the game changes between an effect's Begin and End that the effect doesn't own).
-`D3D9_STATELOG=1` (each render and stage state value the game uses, once). `tests/hlsl_check.m` compiles every pass of
-`.fx` files with Metal (`HLSL_DUMP=<technique>` prints its source); `tests/fx_render_test.m <folder with the .fx files>`
-renders the game's pixel shaders with known inputs and checks their results (glow taps and weights, shadow blur, heat
-shimmer, Dot3, ice, specular, water, sampler slots, XRGB alpha).
+| Variable | Effect |
+|---|---|
+| `HW_DATA` | the user data folder (the launcher passes `<data>/userdata`) |
+| `HW_FULLSCREEN`, `HW_NOTCH`, `HW_RETINA`, `HW_VSYNC`, `HW_GL` | the launcher's display choices; `HW_GL` selects Apple GL instead of Metal |
+| `HW_TEST` | test mode |
+| `HW_SHOT`, `HW_SCRIPT`, `HW_QUIT_MS` | take a screenshot, drive input from a script, quit after N ms |
+| `HW_TRACE`, `HW_STUB` | trace calls; report stubbed calls |
+| `HW_LOG_FPS`, `HW_LOG_GL`, `HW_LOG_FILES` and other `HW_LOG_*` | subsystem logs |
+| `HW_MGL_DUMP=<dir>` | write the Metal source of pipelines that fail to build |
 
-Native hot loops (`runtime/win32/native.c`, entered through `tools/lift.py` HOOKS and OVERRIDES): the vertex lighting
-of directional lights and the terrain's 3x3 vertex transform, bit-identical to the original. `DS2_NATIVE=0` runs the
-recompiled original instead, `DS2_NATIVE_CHECK=1` runs both and reports any difference, `DS2_NATIVE_PROF=1` prints
-the lighting loop's time. `DSR_CAPLOG=1` prints the game's work per frame that the automatic frame cadence (120/60) is
-chosen from.
+## Not part of this build
 
-## Execution model
-
-- **Memory:** one 4 GB host region; guest address = offset. The image sits at its preferred base `0x400000`, so all
-  pointers the game stores (vtables, saves, its own structures) keep their 32-bit values.
-- **Functions:** one C function per original function. Registers are C locals, written back to a per-thread context
-  around calls. The guest stack is real (`call` pushes the original return address; arguments are read where the
-  original reads them), so calling conventions, `this` pointers and stack-walking code behave as before.
-- **Flags:** lazy — flag-setting instructions record their operands; consumers (`jcc`, `setcc`, `adc`, `sahf` …)
-  compute only the flags they need.
-- **x87:** eight doubles + TOP + control/status words, the precision model this game was measured to run with under
-  Rosetta: double arithmetic, float rounding at 32-bit stores, `fist(p)` honouring the rounding
-  mode. x87 register forms are decoded from the opcode bytes (Intel semantics), not from disassembler text.
-- **Indirect calls/jumps:** an address → function table; jump tables become `switch` statements; imports are dispatched
-  through `rt_import` (IAT slots hold thunk addresses, so a call through a register still lands there).
-- Junk decodes (data read as code) and padding become `rt_unhandled()` traps.
-
-## Verification and known gaps
-
-The instruction-level harness (`tests/harness.py`, `tests/fuzz_insn.py`, `tests/test_slice.py`) comes from the
-Dungeon Siege 1 port, where every instruction form the game used was checked bit-for-bit against Unicorn; it has not
-been re-run on DS2's instruction mix yet. DS2 has been checked by playing: menus, hero creation, movies, the opening
-of the campaign, save/load, and a 6-minute random-input soak.
-
-- **SEH:** access violations and RaiseException go through the game's handlers. First touches of reserved archive
-  pages pass over C++ `catch(...)` frames (the game reads archives inside them); C++ catch continuations are not
-  implemented, and the game has not needed them so far.
-- **Indirect calls** to addresses outside the function table stop the game with the address logged (add it as a
-  seed in `work/observed_targets.json` and rebuild).
-- **x87 tag word** is not modelled; transcendentals use the host math library.
+`host/launcher.m`, `host/r6_launcher.m`, `host/linux.c`, `host/linux_launcher/` and `runtime/win32/` came with the sister ports
+this repository was started from. Nothing here compiles them (`build_hw.sh`, `tools/build_hw_runtime.sh` and `install.sh` use
+`host/hw_launcher.m`, `runtime/rt.c` and `runtime/mac/**`). They are kept for reference only.

@@ -1,0 +1,113 @@
+{
+  "name": "Homeworld Remastered",
+  "folder": "Homeworld Remastered",
+  "bundle_id": "io.github.joshspeakman.homeworld-remastered",
+  "release_repo": "Joshspeakman/homeworld-remastered-macos",
+  "binary": "hw2hd",
+  "icon_label": "HW",
+  "version": "Steam (Mac)",
+  "where": "Your Homeworld Remastered Collection from Steam's Mac version (app 244160): HomeworldRemastered.app, or the Homeworld folder holding it",
+  "minutes": 10,
+  "space_gb": 11,
+  "build_gb": 2,
+  "exe": "Contents/MacOS/HW2HD_Exe",
+  "exe_sha256": {
+    "ac55a0eaf1e35848fb8cafc298c5b8e1d7ca0e1cd755687563131d4169509e65": "Steam (Mac)"
+  },
+  "inside": [
+    ""
+  ],
+  "required": [
+    "Contents/Assets/HomeworldRM",
+    "Contents/Resources"
+  ],
+  "libs": [],
+  "tag_lowercase": false,
+  "lift_args": [
+    "--game",
+    "hw"
+  ],
+  "link_tables": false,
+  "game_sources": [
+    "macho_tab.c",
+    "override_tab.c"
+  ],
+  "runtime_headers": [
+    "runtime/macho_tab.h"
+  ],
+  "cc_args": [
+    "-fPIC",
+    "-DRT_HOST_RC_INIT=UINT32_MAX"
+  ],
+  "art": [
+    "hw_art.py",
+    "{art}"
+  ],
+  "log": "hw2hd",
+  "local_network": "Homeworld Remastered hosts and joins multiplayer games on your local network.",
+  "build": "./build_hw.sh \"$GAME\"",
+  "out": "work/hw2hd",
+  "deps": "tools/build_deps.sh",
+  "rt_opt": "-O1 -ffp-contract=off",
+  "rt_cflags": [
+    "-I$OUT",
+    "-I$DEPS/include"
+  ],
+  "rt_includes": [
+    "runtime/mac"
+  ],
+  "host_main": "runtime/mac/main.c",
+  "host_includes": [
+    "runtime/mac"
+  ],
+  "host_cflags": [
+    "-I$OUT",
+    "-I$DEPS/include"
+  ],
+  "skip_objects": [
+    "main.o"
+  ],
+  "game_objects": [
+    "macho_tab.o",
+    "override_tab.o"
+  ],
+  "app_files": [],
+  "frameworks": [
+    "CoreFoundation",
+    "Foundation",
+    "AppKit",
+    "Metal",
+    "QuartzCore",
+    "OpenGL",
+    "ImageIO",
+    "CoreServices",
+    "AudioToolbox",
+    "CoreAudio",
+    "IOKit",
+    "GameController",
+    "CoreImage"
+  ],
+  "link_flags": [
+    "-liconv",
+    "-L$DEPS/lib",
+    "-lSDL2",
+    "-lglslang",
+    "-lglslang-default-resource-limits",
+    "-lSPIRV-Tools-opt",
+    "-lSPIRV-Tools",
+    "-lspirv-cross-msl",
+    "-lspirv-cross-glsl",
+    "-lspirv-cross-core",
+    "-lc++"
+  ],
+  "dylibs": [
+    "libSDL2*.dylib",
+    "libSDL3*.dylib",
+    "libglslang*.dylib",
+    "libSPIRV-Tools-opt.dylib",
+    "libSPIRV-Tools.dylib",
+    "libSPIRV.*dylib"
+  ],
+  "style": "tactical",
+  "title": "HOMEWORLD REMASTERED"
+}

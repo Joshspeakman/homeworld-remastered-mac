@@ -1,6 +1,6 @@
 # Homeworld Remastered Collection — native Apple Silicon port
 
-**Work in progress — not playable yet.** The aim is the Steam *Mac* edition of Homeworld Remastered (Aspyr, 2.0.1)
+**Early, and playable into the campaign.** This is the Steam *Mac* edition of Homeworld Remastered (Aspyr, 2.0.1)
 running natively on Apple Silicon. That edition is a 32-bit Intel app; macOS dropped 32-bit apps in 10.15, and
 Rosetta 2 does not run them, so the Steam copy no longer starts on a current Mac.
 
@@ -18,10 +18,11 @@ build regenerates everything from your own Steam files.
 Needs the Steam Mac edition of Homeworld Remastered Collection downloaded (Steam keeps it in
 `~/Library/Application Support/Steam/steamapps/common/Homeworld`), the Xcode command line tools, python3 and
 `brew install sdl2-compat glslang spirv-cross`. The game's files are imported into `~/Games/HomeworldNative/game-files` (an APFS clone);
-profiles, saves, settings and the game's log (`HwRM.log`) go to `~/Games/HomeworldNative/userdata`.
+profiles, saves, settings and the logs (the game's `HwRM.log`, the port's `hw2hd.log` and `hw2hd.old.log`) go to `~/Games/HomeworldNative/userdata`.
 
 The app opens a small launcher: Homeworld Remastered (the HW1 campaign) or Homeworld 2 Remastered (the HW2
-campaign), full screen or a window, and an option to skip all movies.
+campaign), full screen or a window, an option to skip all movies, and Graphics Options: Notch (Below It / Around It),
+Resolution (Standard / Retina), VSync (On / Off) and Renderer (Metal / Apple GL). It also has Saves and Updates tiles.
 
 ## Status
 
