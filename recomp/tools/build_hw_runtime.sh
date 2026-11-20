@@ -5,7 +5,8 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"; OUT="$1"; mkdir -p "$OUT/obj/rt"
 python3 "$HERE/tools/gen_gl.py" "$OUT/gl_gen.c"
 SRC=("$HERE"/runtime/mac/*.c); shopt -s nullglob; OBJC=("$HERE"/runtime/mac/*.m); shopt -u nullglob
 python3 "$HERE/tools/gen_mac_imptab.py" "$OUT/mac_imptab.c" "${SRC[@]}" ${OBJC[@]+"${OBJC[@]}"} "$OUT/gl_gen.c"
-INC=(-I "$HERE/runtime" -I "$HERE/runtime/mac" -I "$OUT" -I /opt/homebrew/include)
+DEPS="${DEPS:-/opt/homebrew}"   # the libraries: Homebrew's, or built for a release's macOS (tools/build_deps.sh, setup/make_release.sh)
+INC=(-I "$HERE/runtime" -I "$HERE/runtime/mac" -I "$OUT" -I "$DEPS/include")
 pids=()
 for f in "$HERE"/third_party/core-math/*.c; do
   clang -c -O2 -ffp-contract=off -w -o "$OUT/obj/rt/cm_$(basename "$f" .c).o" "$f" & pids+=($!)
@@ -24,5 +25,5 @@ for f in "$HERE"/runtime/mac/mgl/*.cpp; do
 done
 fail=0; for p in "${pids[@]}"; do wait "$p" || fail=1; done; [ $fail = 0 ] || exit 1
 clang++ -o "$OUT/hw2hd" "$OUT"/obj/*.o "$OUT"/obj/rt/*.o -framework CoreFoundation -framework Foundation -framework AppKit \
-  -framework Metal -framework QuartzCore -framework OpenGL -framework ImageIO -framework CoreServices -framework AudioToolbox -framework CoreAudio -framework IOKit -framework GameController -liconv -L/opt/homebrew/lib -lSDL2 -lglslang -lglslang-default-resource-limits -lSPIRV-Tools-opt -lSPIRV-Tools -lspirv-cross-msl -lspirv-cross-glsl -lspirv-cross-core
+  -framework Metal -framework QuartzCore -framework OpenGL -framework ImageIO -framework CoreServices -framework AudioToolbox -framework CoreAudio -framework IOKit -framework GameController -liconv -L"$DEPS/lib" -lSDL2 -lglslang -lglslang-default-resource-limits -lSPIRV-Tools-opt -lSPIRV-Tools -lspirv-cross-msl -lspirv-cross-glsl -lspirv-cross-core
 echo "== $OUT/hw2hd"

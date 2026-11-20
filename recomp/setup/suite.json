@@ -1,0 +1,21 @@
+{
+  "name": "Homeworld Remastered",
+  "bundle_id": "io.github.joshspeakman.homeworld-remastered",
+  "release_repo": "Joshspeakman/homeworld-remastered-macos",
+  "binary": "Homeworld Remastered",
+  "icon_label": "HW",
+  "style": "tactical",
+  "title": "HOMEWORLD REMASTERED",
+  "local_network": "Homeworld Remastered hosts and joins multiplayer games on your local network.",
+  "launcher": [
+    "host/hw_launcher.m"
+  ],
+  "launcher_frameworks": [
+    "Cocoa"
+  ],
+  "games": [
+    {
+      "json": "hw.json"
+    }
+  ]
+}

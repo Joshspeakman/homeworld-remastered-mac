@@ -49,9 +49,14 @@ static void obj_drop(uint32_t addr, int kind)
     pthread_mutex_lock(&obj_lock);
     for (unsigned n = 0; n < NOBJ && objs[k].addr; n++, k = (k + 1) & (NOBJ - 1))
         if (objs[k].addr == addr && objs[k].kind == kind) {
-            /* keep the slot (probe chains stay intact) but give it a fresh object on the next init */
+            /* tombstone the slot (probe chains stay intact); it is reused by the next init on its chain */
             if (kind == K_MUTEX) { pthread_mutex_destroy(objs[k].h); } else pthread_cond_destroy(objs[k].h);
-            free(objs[k].h); objs[k].kind = -kind; objs[k].h = 0; nlive--; break;
+            free(objs[k].h); objs[k].kind = -kind; objs[k].h = 0; nlive--;
+            /* the chain ends right after k: this tombstone and any tombstones just before it keep no chain intact, so they
+               become empties again; without this the empties are consumed monotonically and every miss walks the whole table */
+            if (!objs[(k + 1) & (NOBJ - 1)].addr)
+                for (unsigned j = k; objs[j].addr && objs[j].kind < 0; j = (j - 1) & (NOBJ - 1)) { objs[j].addr = 0; objs[j].kind = 0; }
+            break;
         }
     pthread_mutex_unlock(&obj_lock);
 }
